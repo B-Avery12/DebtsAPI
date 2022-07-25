@@ -13,6 +13,7 @@ func main() {
 	debts, err := api.GetDebts()
 	if err != nil {
 		log.Fatal("unable to get debts")
+		return
 	}
 	if len(debts) <= 0 {
 		log.Println("no debts, exiting")
@@ -42,6 +43,6 @@ func main() {
 		if err != nil {
 			log.Printf("unable to marshal debt %d", debt.ID)
 		}
-		fmt.Println(rawDebt)
+		fmt.Println(string(rawDebt))
 	}
 }

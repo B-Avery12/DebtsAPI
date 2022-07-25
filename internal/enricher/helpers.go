@@ -3,7 +3,6 @@ package enricher
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github/bridger/interviews/TrueAccord/internal/api"
 	"log"
 	"math"
@@ -162,8 +161,6 @@ func getNextPayment(startDate time.Time, installmentFrequency string, lastPaymen
 		return time.Now(), errors.New("Invalid installment frequency")
 	}
 	for !startDate.After(lastPayment) {
-		fmt.Println(startDate.Day())
-		fmt.Println(lastPayment.Day())
 		startDate = startDate.Add(installmentDuration)
 	}
 	return startDate, nil
