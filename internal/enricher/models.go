@@ -29,7 +29,6 @@ type PaymentPlan struct {
 	InstallmentFrequency string
 	InstallmentAmount    float64   // Amount due each installment
 	StartDate            time.Time // ISO 8601 date of when the first payment due
-	Payments             []Payment
 	LastPayment          *Payment
 }
 

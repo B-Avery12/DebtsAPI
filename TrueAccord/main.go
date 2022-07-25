@@ -27,8 +27,15 @@ func main() {
 		log.Fatal("unable to get payment")
 	}
 
-	enrichedPlans := enricher.CreatePaymentPlans(plans, payments)
-	enrichedDebts := enricher.EnrichDebts(debts, enrichedPlans)
+	convertedPlans := enricher.ConvertPaymentPlans(plans)
+	convertedPayments := enricher.ConvertPayments(payments)
+	convertedDebts := enricher.ConvertDebts(debts)
+
+	paymentsByPlan := enricher.SortPaymentsByPlan(convertedPayments)
+	enrichedplans := enricher.EnrichPaymentPlans(convertedPlans, paymentsByPlan)
+	sortedPlans := enricher.SortPlansByDebtID(enrichedplans)
+
+	enrichedDebts := enricher.EnrichDebts(convertedDebts, sortedPlans)
 
 	for _, debt := range enrichedDebts {
 		rawDebt, err := json.Marshal(debt)

@@ -2,7 +2,11 @@ package enricher
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"github/bridger/interviews/TrueAccord/internal/api"
+	"log"
+	"math"
 	"strconv"
 	"time"
 )
@@ -11,38 +15,89 @@ const (
 	customFormat = "2006-01-02"
 )
 
-// EnrichDebts - convert from api model to enricher model
-func EnrichDebts(apiDebts api.Debts, paymentPlansByDebtID map[int]PaymentPlan) map[int]Debt {
-	debts := make(map[int]Debt, len(apiDebts))
+// EnrichDebts - enrich debts based of enriched payment plans
+func EnrichDebts(debts []Debt, paymentPlansByDebtID map[int]PaymentPlan) []Debt {
+	enrichedDebts := make([]Debt, len(debts))
+	for index, debt := range debts {
+		if plan, ok := paymentPlansByDebtID[debt.ID]; ok {
+			if plan.AmountToPay == 0 {
+				debt.NextPaymentDueDate = ""
+				debt.IsInPaymentPlan = false // Since the debt is paid mark as not being in a payment plan
+			} else {
+				debt.IsInPaymentPlan = true
+				// Now we just need the NexPaymentDueDate - Its the next installment date after the last payment. Start at the start date and add installmen frequency until past the last payment then quit
+				nextPaymentDate, err := getNextPayment(plan.StartDate, plan.InstallmentFrequency, plan.LastPayment.Date)
+				if err != nil {
+					log.Printf("unable to get nextPaymentDate with err: %s for debt: %d and plan: %d\n", err.Error(), debt.ID, plan.ID)
+					continue
+				}
+				debt.NextPaymentDueDate = nextPaymentDate.Format(customFormat)
+			}
+			debt.RemainingAmount = json.Number(strconv.FormatFloat(plan.AmountToPay, 'e', 2, 64))
+		} else {
+			debt.NextPaymentDueDate = ""
+			debt.RemainingAmount = json.Number(strconv.FormatFloat(debt.AmountOwed, 'e', 2, 64))
+		}
+
+		enrichedDebts[index] = debt
+	}
+
+	return enrichedDebts
+}
+
+// ConvertDebts - Convert from api model to enrich model
+func ConvertDebts(apiDebts api.Debts) []Debt {
+	debts := make([]Debt, len(apiDebts))
 	for index, debt := range apiDebts {
-		newDebt := Debt{
+		debts[index] = Debt{
 			ID:              debt.ID,
 			AmountOwed:      debt.AmountOwed,
 			RemainingAmount: json.Number(strconv.FormatFloat(debt.AmountOwed, 'e', 2, 64)),
 			IsInPaymentPlan: false,
 		}
-		if plan, ok := paymentPlansByDebtID[debt.ID]; ok {
-			newDebt.IsInPaymentPlan = true
-			newDebt.RemainingAmount = json.Number(strconv.FormatFloat(plan.AmountToPay, 'e', 2, 64))
-			// Now we just need the NexPaymentDueDate - Its the next installment date after the last payment. Start at the start date and add installmen frequency until past the last payment then quit
-			if plan.AmountToPay == 0 {
-				newDebt.NextPaymentDueDate = ""
-				newDebt.IsInPaymentPlan = false // Since the debt is paid mark as not being in a payment plan
-			}
-		} else {
-			newDebt.NextPaymentDueDate = ""
-		}
-
-		debts[index] = newDebt
 	}
 
 	return debts
 }
 
-// CreatePaymentPlans - Converts from api model to enricher model and enriches with last payment, and update amount to pay based on payments total
-func CreatePaymentPlans(apiPlans api.PaymentPlans, apiPayments api.Payments) map[int]PaymentPlan {
-	paymentsByPlanID := createPayments(apiPayments)
-	plans := make(map[int]PaymentPlan, len(apiPlans))
+// SortPlansByDebtID -
+func SortPlansByDebtID(plans []PaymentPlan) map[int]PaymentPlan {
+	sortedPlans := make(map[int]PaymentPlan)
+	for _, plan := range plans {
+		sortedPlans[plan.DebtID] = plan
+	}
+
+	return sortedPlans
+}
+
+// EnrichPaymentPlans - enrich payment plans based on payments paid towards them
+func EnrichPaymentPlans(plans []PaymentPlan, payments map[int][]Payment) []PaymentPlan {
+	enrichedPlans := make([]PaymentPlan, len(plans))
+	for index, plan := range plans {
+		planPayments := payments[plan.ID]
+		if len(planPayments) > 0 {
+			lastPayment := planPayments[0]
+			for _, payment := range planPayments {
+				if payment.Date.After(lastPayment.Date) {
+					lastPayment = payment
+				}
+				plan.AmountToPay -= payment.Amount
+			}
+
+			plan.LastPayment = &lastPayment
+		} else {
+			plan.LastPayment = nil
+		}
+		plan.AmountToPay = math.Round(plan.AmountToPay*100) / 100
+		enrichedPlans[index] = plan
+	}
+
+	return enrichedPlans
+}
+
+// ConvertPaymentPlans - convert from api paymentplans to enrich paymentplan
+func ConvertPaymentPlans(apiPlans api.PaymentPlans) []PaymentPlan {
+	plans := make([]PaymentPlan, len(apiPlans))
 	for index, plan := range apiPlans {
 		startDate, err := time.Parse(customFormat, plan.StartDate)
 		if err != nil {
@@ -56,22 +111,6 @@ func CreatePaymentPlans(apiPlans api.PaymentPlans, apiPayments api.Payments) map
 			InstallmentFrequency: plan.InstallmentFrequency,
 			InstallmentAmount:    plan.InstallmentAmount,
 			StartDate:            startDate,
-			Payments:             paymentsByPlanID[plan.ID],
-		}
-		if len(newPlan.Payments) > 0 {
-			lastPayment := newPlan.Payments[0]
-			for _, payment := range newPlan.Payments {
-				if payment.Date.After(lastPayment.Date) {
-					lastPayment = payment
-				}
-			}
-
-			newPlan.LastPayment = &lastPayment
-		} else {
-			newPlan.LastPayment = nil
-		}
-		for _, payment := range newPlan.Payments {
-			newPlan.AmountToPay = newPlan.AmountToPay - payment.Amount
 		}
 		plans[index] = newPlan
 	}
@@ -79,27 +118,53 @@ func CreatePaymentPlans(apiPlans api.PaymentPlans, apiPayments api.Payments) map
 	return plans
 }
 
-// Converts api payments to a enrich  models and creates a map not a slice
-func createPayments(apiPayments api.Payments) map[int][]Payment {
-	payments := make(map[int][]Payment)
-	for _, apiPayment := range apiPayments {
+// ConvertPayments -
+func ConvertPayments(apiPayments api.Payments) []Payment {
+	payments := make([]Payment, len(apiPayments))
+	for index, apiPayment := range apiPayments {
 		paymentDate, err := time.Parse(customFormat, apiPayment.Date)
 		if err != nil {
 			// Set a custom date at year 1
 			paymentDate, _ = time.Parse(customFormat, "0001-12-12")
 		}
 
-		payment := Payment{
+		payments[index] = Payment{
 			PaymentPlanID: apiPayment.PaymentPlanID,
 			Amount:        apiPayment.Amount,
 			Date:          paymentDate,
 		}
-
-		if _, ok := payments[payment.PaymentPlanID]; !ok {
-			payments[payment.PaymentPlanID] = make([]Payment, 0)
-		}
-		payments[payment.PaymentPlanID] = append(payments[payment.PaymentPlanID], payment)
 	}
 
 	return payments
+}
+
+// SortPaymentsByPlan - sorts payments by plan they are paid towards
+func SortPaymentsByPlan(payments []Payment) map[int][]Payment {
+	sortedPayments := make(map[int][]Payment)
+	for _, payment := range payments {
+		if _, ok := sortedPayments[payment.PaymentPlanID]; !ok {
+			sortedPayments[payment.PaymentPlanID] = make([]Payment, 0)
+		}
+		sortedPayments[payment.PaymentPlanID] = append(sortedPayments[payment.PaymentPlanID], payment)
+	}
+
+	return sortedPayments
+}
+
+func getNextPayment(startDate time.Time, installmentFrequency string, lastPayment time.Time) (time.Time, error) {
+	var installmentDuration time.Duration
+	switch installmentFrequency {
+	case api.WeeklyFrequency:
+		installmentDuration = time.Duration(time.Hour * 24 * 7)
+	case api.BiWeeklyFrequency:
+		installmentDuration = time.Duration(time.Hour * 24 * 14)
+	default:
+		return time.Now(), errors.New("Invalid installment frequency")
+	}
+	for !startDate.After(lastPayment) {
+		fmt.Println(startDate.Day())
+		fmt.Println(lastPayment.Day())
+		startDate = startDate.Add(installmentDuration)
+	}
+	return startDate, nil
 }
