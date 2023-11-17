@@ -1,3 +1,6 @@
+# Disclaimer:
+    The URL and Server combo this was designed to interact with no longer exist.
+
 # How to run:
     1 - In the directory with the Makefile run "make build"
     2 - Run "./bin/DebtsAPI"
