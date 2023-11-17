@@ -10,7 +10,7 @@ import (
 
 const (
 	// URL - url for mock payments api
-	URL = "https://my-json-server.typicode.com/druska/trueaccord-mock-payments-api"
+	URL = ""
 	// DebtsEndpoint - endpoint to retrieve debts
 	DebtsEndpoint = "debts"
 	// PaymentPlansEndpoint - endpoing to retrieve payment plans

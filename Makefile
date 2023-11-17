@@ -4,4 +4,4 @@ test:
 	go test ./...
 
 build:
-	go build -o bin/TrueAccord ./TrueAccord
+	go build -o bin/DebtsAPI ./DebtsAPI

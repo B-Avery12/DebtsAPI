@@ -3,8 +3,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github/bridger/interviews/TrueAccord/internal/api"
-	"github/bridger/interviews/TrueAccord/internal/enricher"
+	"github/bridger/interviews/DebtsAPI/internal/api"
+	"github/bridger/interviews/DebtsAPI/internal/enricher"
 	"log"
 )
 

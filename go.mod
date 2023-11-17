@@ -1,4 +1,4 @@
-module github/bridger/interviews/TrueAccord
+module github/bridger/interviews/DebtsAPI
 
 go 1.18
 

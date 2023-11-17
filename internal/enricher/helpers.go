@@ -3,7 +3,7 @@ package enricher
 import (
 	"encoding/json"
 	"errors"
-	"github/bridger/interviews/TrueAccord/internal/api"
+	"github/bridger/interviews/DebtsAPI/internal/api"
 	"log"
 	"math"
 	"strconv"
